@@ -1,0 +1,261 @@
+
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+
+#include "HTML.h"
+
+// Function to handle the root path and serve the HTML page
+#define APSSID "ESP_SLAVE"                // Set your own SSID
+#define APPSK  "ESP_SLAVE"                // Set your own password
+
+
+// WiFi and Web Server Setup
+const char* ssid = APSSID;
+const char* password = APPSK;
+
+String sendData = "";             // Buffer to store data from the Server
+
+// Define static IP configuration
+IPAddress local_IP(192,168,4,2);            
+IPAddress gateway(192,168,4,9);
+IPAddress subnet(255,255,255,0);
+
+#define LED1 14
+#define LED2 12
+#define LED3 4
+#define LED4 13
+
+#define MDNS_HOSTNAME "ESP_SLAVE"      //Set your own MDNS Host Name 
+
+
+
+// Function to handle relay toggling
+void handleToggle() {
+  if (server.hasArg("relay")) {
+    int relay = server.arg("relay").toInt();
+
+    switch (relay) {
+      case 1:
+        LED1State = !LED1State;
+        digitalWrite(LED1, LED1State ? LOW : HIGH);
+        break;
+      case 2:
+        LED2State = !LED2State;
+        digitalWrite(LED2, LED2State ? LOW : HIGH);
+        break;
+      case 3:
+        LED3State = !LED3State;
+        digitalWrite(LED3, LED3State ? LOW : HIGH);
+        break;
+      case 4:
+        LED4State = !LED4State;
+        digitalWrite(LED4, LED4State ? LOW : HIGH);
+        break;
+    }
+
+    // Update the state of the switch on the page
+    server.send(200, "text/plain", "OK");
+  }
+}
+
+
+// Function to handle sending data to UART
+void handleSendData1() {
+  if (server.hasArg("data")) {
+    float data = server.arg("data").toFloat();
+    delayTime1 = calculateTime(data);
+
+    Serial.print("Data for Relay 1: ");
+    Serial.println(data);
+    Serial.print("DelayTime is: ");
+    Serial.print(delayTime1 / 1000);
+    Serial.println(" seconds");
+    Serial.println("");
+
+    LED1Active = true;
+    LED1State = true;
+    LED1StartTime = millis();
+    digitalWrite(LED1, HIGH); 
+    delay(delayTime1);
+    digitalWrite(LED1,LOW);
+    digitalWrite(LED2,HIGH);
+  }
+  server.send(200, "text/plain", "OK");
+}
+
+void handleSendData2() {
+  if (server.hasArg("data")) {
+    float data = server.arg("data").toFloat();
+    delayTime2 = calculateTime(data);
+
+    Serial.print("Data for Relay 2: ");
+    Serial.println(data);
+    Serial.print("DelayTime is: ");
+    Serial.print(delayTime2 / 1000);
+    Serial.println(" seconds");
+    Serial.println("");
+
+    LED2Active = false;
+    LED2State = false;
+    LED2StartTime = millis();
+    digitalWrite(LED2, LOW);  // Turn on the relay
+  }
+  server.send(200, "text/plain", "OK");
+}
+
+void handleSendData3() {
+  if (server.hasArg("data")) {
+    float data = server.arg("data").toFloat();
+    delayTime3 = calculateTime(data);
+
+    Serial.print("Data for Relay 3: ");
+    Serial.println(data);
+    Serial.print("DelayTime is: ");
+    Serial.print(delayTime3 / 1000);
+    Serial.println(" seconds");
+    Serial.println("");
+
+    LED3Active = true;
+    LED3State = true;
+    LED3StartTime = millis();
+    digitalWrite(LED3, LOW);  // Turn on the relay
+  }
+  server.send(200, "text/plain", "OK");
+}
+
+void handleSendData4() {
+  if (server.hasArg("data")) {
+    float data = server.arg("data").toFloat();
+    delayTime4 = calculateTime(data);
+
+    Serial.print("Data for Relay 4: ");
+    Serial.println(data);
+    Serial.print("DelayTime is: ");
+    Serial.print(delayTime4 / 1000);
+    Serial.println(" seconds");
+    Serial.println("");
+
+    LED4Active = true;
+    LED4State = true;
+    LED4StartTime = millis();
+    digitalWrite(LED4, LOW);  // Turn on the relay
+  }
+  server.send(200, "text/plain", "OK");
+}
+
+// Function to calculate delay time in milliseconds from input in minutes
+int calculateTime(float inputMinutes) {
+  return inputMinutes * 60 * 1000; // Convert minutes to milliseconds
+}
+
+void handleStatus() {
+  String jsonResponse = "{";
+  jsonResponse += "\"LED1\": " + String(LED1State ? "true" : "false") + ",";
+  jsonResponse += "\"LED2\": " + String(LED2State ? "true" : "false") + ",";
+  jsonResponse += "\"LED3\": " + String(LED3State ? "true" : "false") + ",";
+  jsonResponse += "\"LED4\": " + String(LED4State ? "true" : "false");
+  jsonResponse += "}";
+  server.send(200, "application/json", jsonResponse);
+}
+
+void updateSwitchStates() {
+  server.send(200, "application/json", "{"
+    "\"LED1\":" + String(LED1State ? "true" : "false") + ","
+    "\"LED2\":" + String(LED2State ? "true" : "false") + ","
+    "\"LED3\":" + String(LED3State ? "true" : "false") + ","
+    "\"LED4\":" + String(LED4State ? "true" : "false") +
+  "}");
+}
+
+// Function to check and update relay states based on the timer
+void checkRelays() {
+  unsigned long currentTime = millis();
+
+  // Turn off relay after the specified time
+  if (LED1Active && currentTime - LED1StartTime >= delayTime1) {
+    digitalWrite(LED1, LOW);  // Turn off the relay
+    LED1Active = false;         // Reset active state
+    LED1State = false;          // Update the relay state
+  }
+
+  if (LED2Active && currentTime - LED2StartTime >= delayTime2) {
+    digitalWrite(LED2, LOW);  // Turn off the relay
+    LED2Active = false;         // Reset active state
+    LED2State = false;          // Update the relay state
+  }
+
+  if (LED3Active && currentTime - LED3StartTime >= delayTime3) {
+    digitalWrite(LED3, HIGH);  // Turn off the relay
+    LED3Active = false;         // Reset active state
+    LED3State = false;          // Update the relay state
+  }
+
+  if (LED4Active && currentTime - LED4StartTime >= delayTime4) {
+    digitalWrite(LED4, HIGH);  // Turn off the relay
+    LED4Active = false;         // Reset active state
+    LED4State = false;          // Update the relay state
+  }
+
+  // Sync switch states with relay states
+  updateSwitchStates();
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(10);
+
+  // Initialize the output variables as outputs
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+  pinMode(LED3, OUTPUT);
+  pinMode(LED4, OUTPUT);
+  // Set outputs to HIGH. relay Active LOW
+  digitalWrite(LED1, LOW);
+  digitalWrite(LED2, LOW);
+  digitalWrite(LED3, HIGH);
+  digitalWrite(LED4, HIGH);
+
+  Serial.println();
+  Serial.print("Setting up AP: ");
+  Serial.println(ssid);
+
+  // Configure the static IP
+  if (!WiFi.softAPConfig(local_IP, gateway, subnet)) {
+    Serial.println("Failed to configure AP");
+  }
+
+  // Start the Access Point
+  if (!WiFi.softAP(ssid, password)) {
+    Serial.println("Failed to start AP");
+  }
+
+  // Print the IP address
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(myIP);
+
+  // Define the routes
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/toggle", HTTP_GET, handleToggle);
+  server.on("/send1", handleSendData1);
+  server.on("/send2", handleSendData2);
+  server.on("/send3", handleSendData3);
+  server.on("/send4", handleSendData4);
+  server.on("/status", updateSwitchStates);
+
+  MDNS.begin(MDNS_HOSTNAME);         
+  
+  // Start the server
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
+void loop() {
+    
+    server.handleClient();
+    MDNS.update();
+    checkRelays();
+    
+   
+}

@@ -1,0 +1,185 @@
+
+
+// Static IP Configuration
+#define LOCAL_IP IPAddress(192,168,4,2)  //Set Your own IP Address
+#define GATEWAY  IPAddress(192,168,4,9)
+#define SUBNET   IPAddress(255,255,255,0)
+
+#define SERVER_PORT 80 
+ESP8266WebServer server(SERVER_PORT);
+
+bool LED1State = true;
+bool LED2State = true;
+bool LED3State = true;   // Relay state tells us about the state of LED
+bool LED4State = true;
+
+bool LED1Active = true;
+bool LED2Active = true;
+bool LED3Active = true;  //Relay active tells us about the button state 
+bool LED4Active = true;
+
+int delayTime1, delayTime2, delayTime3, delayTime4;
+
+unsigned long LED1StartTime = 0;
+unsigned long LED2StartTime = 0;
+unsigned long LED3StartTime = 0;
+unsigned long LED4StartTime = 0;
+
+void handleRoot() {
+  String htmlPage = "<!DOCTYPE html>"
+                    "<html>"
+                    "<head>"
+                    "<title>ESP8266 LED Control</title>"
+                    "<style>"
+                    "body {"
+                    "display: flex;"
+                    "justify-content: center;"
+                    "align-items: center;"
+                    "height: 100vh;"
+                    "margin: 0;"
+                    "border: 2px solid black;"
+                    "font-size: 36px;" // Increased font size
+                    "background-repeat: no-repeat;"
+                    "}"
+                    
+                    "#container {"
+                    "display: flex;"
+                    "flex-direction: column;"
+                    "align-items: center;"
+                    "}"
+                    
+                    "#container2 {"
+                    "border: 2px solid black;"
+                    "padding: 30px;"
+                    "border-radius: 30px;"
+                    "background-color: #f6e8ff;"
+                    "box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.5);"
+                    "}"
+                    
+                    "label {"
+                    "display: flex;"
+                    "align-items: center;"
+                    "font-size: 36px;" // Increased label font size
+                    "margin-bottom: 20px;" // Increased margin
+                    "}"
+                    
+                    "input[type='checkbox'] {"
+                    "display: none;"
+                    "}"
+                    
+                    "input[type='checkbox'] + .switch {"
+                    "width: 80px;" // Increased switch width
+                    "height: 44px;" // Increased switch height
+                    "background-color: #ccc;"
+                    "border-radius: 44px;" // Adjusted for new size
+                    "position: relative;"
+                    "cursor: pointer;"
+                    "}"
+                    
+                    "input[type='checkbox'] + .switch:before {"
+                    "content: '';"
+                    "width: 36px;" // Increased knob width
+                    "height: 36px;" // Increased knob height
+                    "border-radius: 50%;"
+                    "background-color: white;"
+                    "position: absolute;"
+                    "top: 4px;"
+                    "left: 4px;"
+                    "transition: 0.4s;"
+                    "}"
+                    
+                    "input[type='checkbox']:checked + .switch {"
+                    "background-color: #a0e3a4;"
+                    "}"
+                    
+                    "input[type='checkbox']:checked + .switch:before {"
+                    "transform: translateX(36px);" // Adjusted for new size
+                    "}"
+                    
+                    "input[type='number'] {"
+                    "width: 310px;" // Increased input box width
+                    "height: 55px;" // Increased input box height
+                    "font-size: 29px;" // Increased input font size
+                    "margin-left: 20px;" // Adjusted margin
+                    "border-radius: 20px;" // Adjusted border radius
+                    "margin-bottom: 15px;" // Increased margin
+                    "text-align: center;"
+                    "}"
+                    
+                    "button {"
+                    "border-radius: 30px;" // Increased button border radius
+                    "height: 60px;" // Increased button height
+                    "font-size: 24px;" // Increased button font size
+                    "margin-left: 15px;" // Adjusted margin
+                    "margin-bottom: 18px;"
+                    "background-color: #d7b1ff;"
+                    "}"
+                    "</style>"
+                    "</head>"
+                    "<body>"
+                    "<div id='container'>"
+                    "<h1>S.E.B</h1>"
+                    "<div id='container2'>"
+                    "<label>DEVICE 1: <input type='checkbox' id='LED1' " + String(LED1State ? "checked" : "") + "><span></span>"
+                    "<input type='number' id='data1' placeholder='Enter Minutes' />"
+                    "<button onclick='sendData(1)'>Send Data 1</button></label>"
+                    
+                    "<label>DEVICE 2: <input type='checkbox' id='LED2' " + String(LED2State ? "checked" : "") + "><span ></span>"
+                    "<input type='number' id='data2' placeholder='Enter Minutes' />"
+                    "<button onclick='sendData(2)'>Send Data 2</button></label>"
+                    
+                    "<label>DEVICE 3: <input type='checkbox' id='LED3' " + String(LED3State ? "checked" : "") + "><span ></span>"
+                    "<input type='number' id='data3' placeholder='Enter Minutes' />"
+                    "<button onclick='sendData(3)'>Send Data 3</button></label>"
+                    
+                    "<label>DEVICE 4: <input type='checkbox' id='LED4' " + String(LED4State ? "checked" : "") + "><span ></span>"
+                    "<input type='number' id='data4' placeholder='Enter Minutes' />"
+                    "<button onclick='sendData(4)'>Send Data 4</button></label>"
+                    "</div>"
+                    "</div>"
+                    "<script>"
+                    "function toggleRelay(relay) {"
+                    "var xhttp = new XMLHttpRequest();"
+                    "xhttp.open('GET', '/toggle?relay=' + relay, true);"
+                    "xhttp.send();"
+                    "}"
+                    "function sendData(relay) {"
+                    "var data = document.getElementById('data' + relay).value;"
+                    "if (data === '') {"
+                    "alert('Please enter a valid time in minutes.');"
+                    "return;" // Do not proceed if input is empty
+                    "}"
+                    "var xhttp = new XMLHttpRequest();"
+                    "xhttp.open('GET', '/send' + relay + '?data=' + encodeURIComponent(data), true);"
+                    "xhttp.send();"
+                    "document.getElementById('data' + relay).value = '';"
+                    
+                    // Keep the switch in the "on" position until the timer expires
+                    "setTimeout(function() {"
+                    "document.getElementById('LED' + relay).checked = false;"
+                    "}, 60000);"
+                    "}"
+                    
+                    "function updateSwitchStates() {"
+                    "var xhttp = new XMLHttpRequest();"
+                    "xhttp.onreadystatechange = function() {"
+                    "if (this.readyState == 4 && this.status == 200) {"
+                    "var states = JSON.parse(this.responseText);"
+                    "document.getElementById('LED1').checked = states.LED1;"
+                    "document.getElementById('LED2').checked = states.LED2;"
+                    "document.getElementById('LED3').checked = states.LED3;"
+                    "document.getElementById('LED4').checked = states.LED4;"
+                    "}"
+                    "};"
+                    "xhttp.open('GET', '/status', true);"
+                    "xhttp.send();"
+                    "}"
+                    "setInterval(updateSwitchStates, 1000);"
+                    "updateSwitchStates();"
+                    "</script>"
+                    "</body>"
+                    "</html>";
+                    
+  server.send(200, "text/html", htmlPage);
+}
+

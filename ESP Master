@@ -1,0 +1,245 @@
+//ESP MASTER//
+
+#include <LiquidCrystal.h>
+#include "secrets.h"
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include "WiFi.h"
+#include <TinyGPS++.h>
+#include <SoftwareSerial.h>
+
+#define PULSE_PIN 35     // Pin connected to the MQ135 sensor
+
+#define BUZZ_PIN 13
+
+#define RS_PIN 19
+#define RW_PIN GND
+#define E_PIN 23
+#define D4_PIN 18
+#define D5_PIN 5
+#define D6_PIN 4
+#define D7_PIN 15
+
+#define AWS_IOT_PUBLISH_TOPIC   "ESP8266"
+#define AWS_IOT_SUBSCRIBE_TOPIC "ESP32"
+
+#define buttonPin 33
+
+static const int RXPin = 4, TXPin = 3;
+static const uint32_t GPSBaud = 9600;
+// The TinyGPS++ object
+TinyGPSPlus gps;
+
+// The serial connection to the GPS device
+SoftwareSerial GPS(RXPin, TXPin);
+
+float buttonVal;
+
+int sensorValue = 0;
+
+
+LiquidCrystal lcd(RS_PIN, E_PIN, D4_PIN, D5_PIN, D6_PIN, D7_PIN);
+  
+String data;
+
+WiFiClientSecure net = WiFiClientSecure();
+PubSubClient client(net);
+
+void connectAWS()
+{
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+ 
+  Serial.println("Connecting to Wi-Fi");
+ 
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+ 
+  // Configure WiFiClientSecure to use the AWS IoT device credentials
+  net.setCACert(AWS_CERT_CA);
+  net.setCertificate(AWS_CERT_CRT);
+  net.setPrivateKey(AWS_CERT_PRIVATE);
+ 
+  // Connect to the MQTT broker on the AWS endpoint we defined earlier
+  client.setServer(AWS_IOT_ENDPOINT, 8883);
+ 
+  // Create a message handler
+  
+ 
+  Serial.println("Connecting to AWS IOT");
+ 
+  while (!client.connect(THINGNAME))
+  {
+    Serial.print(".");
+    delay(100);
+  }
+ 
+  if (!client.connected())
+  {
+    Serial.println("AWS IoT Timeout!");
+    return;
+  }
+ 
+  // Subscribe to a topic
+  client.subscribe(AWS_IOT_SUBSCRIBE_TOPIC);
+ 
+  Serial.println("AWS IoT Connected!");
+}
+ 
+
+ 
+void messageReceived(char *topic, byte *payload, unsigned int length) {
+    Serial.print("Received [");
+    Serial.print(topic);
+    Serial.print("]: ");
+
+    // Create a String from the received payload
+    String payloadStr = String((char*)payload); // Convert to String for easier printing
+    Serial.println(payloadStr); // Print the entire payload
+
+    DynamicJsonDocument doc(512); // Increase size if necessary
+    DeserializationError error = deserializeJson(doc, payloadStr); // Deserialize using the String
+
+    // Check if parsing was successful
+    if (error) {
+        Serial.print("Failed to parse JSON: ");
+        Serial.println(error.f_str());
+        return;
+    }
+
+    // Check the structure of the deserialized document
+    Serial.println("Parsed JSON successfully.");
+
+    // Extract temperature, humidity, and UART data from the JSON document
+    if ( doc.containsKey("UART")) {
+
+        String receivedUART = doc["UART"];
+        Serial.print("UART Data: ");
+        Serial.println(receivedUART);
+    } else {
+        Serial.println("Received JSON does not contain the expected keys.");
+    }
+}
+
+void readSensors() {
+
+sensorValue = analogRead(PULSE_PIN);     // Read analog value from MQ135
+
+
+ 
+  }
+
+void publishMessage()
+{
+  // Create JSON object
+  StaticJsonDocument<200> doc;
+  doc["PulseRate"] = sensorValue;  // Send mapped pulse rate
+  doc["UART"] = data;
+  data="";
+  // Serialize the JSON object to a buffer
+  char jsonBuffer[512]; 
+  serializeJson(doc, jsonBuffer); // serialize to the buffer
+  
+  // Print the JSON buffer for debugging
+   Serial.println("");
+  Serial.print("Publishing message: ");
+  Serial.println(jsonBuffer);
+  
+  // Publish the message to AWS IoT
+  bool success = client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
+  
+  // Check if the message was published successfully
+  if (success) {
+    Serial.println("Message published successfully!");
+     Serial.println("");
+  } else {
+    Serial.println("Message publishing failed!");
+  }
+}
+
+void setup() {
+
+  Serial.begin(115200);
+ connectAWS();
+GPS.begin(GPSBaud);
+  lcd.begin(16, 2);
+
+    pinMode(BUZZ_PIN, OUTPUT); 
+  pinMode(PULSE_PIN,INPUT);
+
+  
+   pinMode (buttonPin,INPUT);
+
+}
+
+void loop() {
+  
+  readSensors();
+  client.loop();
+  // Serial.println(sensorValue);
+
+  if (sensorValue > 65){
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Pulse: ");
+  lcd.print(sensorValue);
+  lcd.print(" BPM");
+  }
+
+   if (sensorValue < 65){
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Pulse: ");
+  lcd.print(sensorValue);
+  lcd.print(" BPM");
+  digitalWrite(BUZZ_PIN,HIGH);
+  }
+
+
+  buttonVal=digitalRead(buttonPin);
+  // Serial.println(buttonVal);
+  delay(500);
+
+ if (buttonVal == LOW) {
+    while (GPS.available() > 0) {
+      gps.encode(GPS.read());
+      if (gps.location.isUpdated()) {
+        lcd.clear();  // Clear the LCD before displaying new coordinates
+        lcd.setCursor(0, 0); 
+        lcd.print("Lat: ");
+        lcd.print(gps.location.lat(), 6);  // Display latitude
+        lcd.setCursor(0, 1);
+        lcd.print("Long: ");
+        lcd.print(gps.location.lng(), 6);  // Display longitude
+        delay(2000);  // Wait for 2 seconds before updating the display again
+      }
+    }
+  }
+   
+
+
+
+  publishMessage();
+   if (Serial.available()) {
+        data = Serial.readString();
+         publishMessage();
+    }
+
+  if (!client.loop()) {
+    Serial.println("Reconnecting to AWS IoT...");
+    connectAWS();
+  }
+ else {
+       
+      }
+  delay(1000); 
+}
+
+
+
+
+

@@ -1,4 +1,6 @@
 # SEB
+SECURE EMERGENCY BAND
+
 SEB is a cost-effective, safety-focused wearable device for activities like adventure sports and swimming.
 
 A large problem faced by public spaces which have a time limit, such as public swimming pools, is that many people try to extend their use of the placee. This means that there’s often overuse of public resources and needs to be addressed. This is one problem we tackle with our solution.
